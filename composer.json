@@ -1,0 +1,48 @@
+{
+    "name": "italix/media",
+    "description": "Image, audio and video format-conversion drivers for italix/converters.",
+    "type": "library",
+    "license": "MPL-2.0",
+    "version": "2.0.1",
+    "keywords": [
+        "conversion",
+        "image",
+        "raster",
+        "gd",
+        "webp",
+        "pdf",
+        "ghostscript"
+    ],
+    "homepage": "https://github.com/italix-net/media",
+    "authors": [
+        {
+            "name": "Italix",
+            "email": "info@italix.net"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "italix/converters": "^0.3"
+    },
+    "suggest": {
+        "ext-gd": "Required by GdImageConverter; without it, image conversion routes report unavailable"
+    },
+    "require-dev": {
+        "italix/testing": "^2.0",
+        "italix/documents": "^0.5",
+        "dompdf/dompdf": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Italix\\Media\\": ""
+        }
+    },
+    "scripts": {
+        "test": [
+            "php tests/GdImageConverterTest.php",
+            "php tests/PdfPageToImageConverterTest.php"
+        ]
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
