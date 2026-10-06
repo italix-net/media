@@ -3,6 +3,30 @@
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning policy: `VERSIONING.md` at the
 project root.
 
+## [2.1.0] — 2026-09-03
+
+### Added
+
+**`ImageTrimmer`** (`Italix\Converters\Trimmer`) — the first real `Trimmer` driver, and the first
+consumer of `italix/converters` 0.5.0's `CropGeometry`. In-process via `ext-gd`'s `imagecrop()`, same
+reasoning as `GdImageConverter` for staying off a subprocess. All the actual crop geometry (which
+pixels survive) is `CropGeometry`'s job, read from `ConversionOptions` — this driver only decodes,
+hands the real pixel dimensions over, and applies the box it gets back. `$amount` (`Trimmer`'s own
+parameter) is unused by this driver; every crop-geometry key is shared plumbing on `ConversionOptions`
+now, not a driver-specific shape.
+
+Explicitly does **not** implement the "adaptive, no options given" content-detection default
+`Trimmer`'s own docblock describes — an omitted crop-geometry option resolves to `CropGeometry`'s
+identity case (the untouched full frame), not a "figure out the real content bounds" pass. Documented
+directly on the class rather than left to be discovered, since it is a real gap against what the
+interface's docblock promises for the "amount is null" case.
+
+`tests/ImageTrimmerTest.php` — 13 assertions, against real `ext-gd` calls on a real, decodable fixture
+(a solid-color canvas with one marker pixel placed at a known coordinate), checking that a crop meant
+to keep a region really keeps the marker pixel and a crop meant to remove it really removes it —
+proving the actual box `CropGeometry` computed was applied, not just that some smaller image came
+back. Requires `italix/converters` `^0.5` now (was `^0.3`).
+
 ## [2.0.1] — 2026-08-28
 
 ### Changed
