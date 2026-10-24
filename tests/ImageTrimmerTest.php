@@ -133,7 +133,7 @@ section('extension and mime are correct, and the format round-trips through jpg 
 test('the extension matches what was requested', $kept->extension_code() === 'png');
 test('the mime type matches', $kept->mime() === 'image/png');
 
-$as_jpg = $driver->trim($marker_png, 'png', null, ConversionOptions::none());
+$as_jpg = $driver->trim($marker_png, 'png', null, ConversionOptions::none()->with_crop_left(0));
 test('same-format-in-same-format-out means this call keeps the source format even when the identity crop applies', $as_jpg->extension_code() === 'png');
 
 // -----------------------------------------------------------------------------
@@ -146,5 +146,72 @@ try {
     $threw = true;
 }
 test('a WIDTH larger than the source throws, via the same CropGeometry validation used directly', $threw);
+
+// -----------------------------------------------------------------------------
+section('adaptive: no amount and no crop key — cut to the real content');
+
+$framed = imagecreatetruecolor(400, 300);
+imagefill($framed, 0, 0, imagecolorallocate($framed, 255, 255, 255));
+imagefilledrectangle($framed, 50, 40, 349, 259, imagecolorallocate($framed, 0, 120, 0));
+imagesetpixel($framed, 360, 20, imagecolorallocate($framed, 0, 0, 200));
+ob_start();
+imagepng($framed);
+imagedestroy($framed);
+$framed_png = ob_get_clean();
+
+$content = imagecreatefromstring($driver->trim($framed_png, 'png', null, ConversionOptions::none())->bytes());
+test('a white frame around a 300x220 block and one stray blue pixel: cut to both, 311x240', [imagesx($content), imagesy($content)] === [311, 240]);
+test('...the block now starts at the left edge', (imagecolorat($content, 0, 20) & 0xFFFFFF) === 0x007800);
+test('...and the blue pixel is its top-right corner', (imagecolorat($content, 310, 0) & 0xFFFFFF) === 0x0000C8);
+imagedestroy($content);
+
+$marker_only = imagecreatefromstring($driver->trim($marker_png, 'png', null, ConversionOptions::none())->bytes());
+test('the marker image: red all round one blue pixel — the border colour is the background, 1x1 is left', [imagesx($marker_only), imagesy($marker_only)] === [1, 1]);
+imagedestroy($marker_only);
+
+$given = imagecreatefromstring($driver->trim($framed_png, 'png', null, ConversionOptions::none()->with_background('#007800'))->bytes());
+test('BACKGROUND given: the green block is background now, and the white is content — nothing to cut', [imagesx($given), imagesy($given)] === [400, 300]);
+imagedestroy($given);
+
+$declared = imagecreatefromstring($driver->trim($framed_png, 'png', null, ConversionOptions::none()->with_crop_left(10))->bytes());
+test('any crop key keeps the declared path, exactly as before', [imagesx($declared), imagesy($declared)] === [390, 300]);
+imagedestroy($declared);
+
+$blank = imagecreatetruecolor(50, 50);
+imagefill($blank, 0, 0, imagecolorallocate($blank, 255, 255, 255));
+ob_start();
+imagepng($blank);
+imagedestroy($blank);
+$blank_png = ob_get_clean();
+$threw = false;
+try {
+    $driver->trim($blank_png, 'png', null, ConversionOptions::none());
+} catch (ConversionException $e) {
+    $threw = true;
+}
+test('nothing but background: an error, not an empty image', $threw);
+
+$as_gif = imagecreatefromstring($framed_png);
+ob_start();
+imagegif($as_gif);
+imagedestroy($as_gif);
+$trimmed_gif = imagecreatefromstring($driver->trim(ob_get_clean(), 'gif', null, ConversionOptions::none())->bytes());
+test('a palette GIF is trimmed like any other — its pixels read as colours, not palette indices', [imagesx($trimmed_gif), imagesy($trimmed_gif)] === [311, 240]);
+imagedestroy($trimmed_gif);
+
+$bottom = imagecreatefromstring($driver->trim($framed_png, 'png', null, ConversionOptions::none()->with_crop_bottom(100))->bytes());
+test('CROP_BOTTOM alone is a declared crop too', [imagesx($bottom), imagesy($bottom)] === [400, 200]);
+imagedestroy($bottom);
+
+$amount = imagecreatefromstring($driver->trim($framed_png, 'png', 'anything', ConversionOptions::none())->bytes());
+test('an amount given (this driver ignores its value) means not adaptive: the declared identity', [imagesx($amount), imagesy($amount)] === [400, 300]);
+imagedestroy($amount);
+
+$faint_bg = imagecreatefromstring($driver->trim($framed_png, 'png', null, ConversionOptions::none()->with_background('#fafafa')->with_gap_tolerance(1))->bytes());
+test('GAP_TOLERANCE reaches the adaptive trim: white is ~2 (of 100) from a #fafafa background — content at 1, nothing cut', [imagesx($faint_bg), imagesy($faint_bg)] === [400, 300]);
+imagedestroy($faint_bg);
+$near_bg = imagecreatefromstring($driver->trim($framed_png, 'png', null, ConversionOptions::none()->with_background('#fafafa'))->bytes());
+test('...and background at the default 10: cut to the content', [imagesx($near_bg), imagesy($near_bg)] === [311, 240]);
+imagedestroy($near_bg);
 
 exit(summary());

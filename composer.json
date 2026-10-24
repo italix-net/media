@@ -3,7 +3,7 @@
     "description": "Image, audio and video format-conversion drivers for italix/converters.",
     "type": "library",
     "license": "MPL-2.0",
-    "version": "2.1.0",
+    "version": "2.3.1",
     "keywords": [
         "conversion",
         "image",
@@ -22,14 +22,14 @@
     ],
     "require": {
         "php": ">=8.1",
-        "italix/converters": "^0.5"
+        "italix/converters": "^0.7"
     },
     "suggest": {
-        "ext-gd": "Required by GdImageConverter and ImageTrimmer; without it, both report unavailable"
+        "ext-gd": "Required by GdImageConverter, ImageTrimmer, ImageExtractor and ImageGridMerger; without it, all four report unavailable"
     },
     "require-dev": {
         "italix/testing": "^2.0",
-        "italix/documents": "^0.7",
+        "italix/documents": "^0.16",
         "dompdf/dompdf": "^3.0"
     },
     "autoload": {
@@ -41,7 +41,11 @@
         "test": [
             "php tests/GdImageConverterTest.php",
             "php tests/PdfPageToImageConverterTest.php",
-            "php tests/ImageTrimmerTest.php"
+            "php tests/ImageTrimmerTest.php",
+            "php tests/ImageExtractorTest.php",
+            "php tests/ImageGridMergerTest.php",
+            "php tests/CookbookTest.php",
+            "php tests/ConvertersCookbookTest.php"
         ]
     },
     "minimum-stability": "stable",

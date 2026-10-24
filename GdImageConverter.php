@@ -48,7 +48,7 @@ use Italix\Converters\UnsupportedOptionException;
  * a no-op, so there is no reason to detect alpha before deciding whether to
  * do it.
  *
- * ConversionOptions read here: QUALITY (jpg/webp, overrides QUALITY_N),
+ * ConversionOptions read here: QUALITY (jpg/webp, overrides DEFAULT_QUALITY),
  * LOSSLESS (webp only — GD's `IMG_WEBP_LOSSLESS`, verified directly to
  * produce byte-exact round trips, unlike any quality value), WIDTH/HEIGHT
  * (resizes the decoded image before encoding; one dimension alone preserves
@@ -75,7 +75,7 @@ final class GdImageConverter implements Converter
     ];
 
     /** JPEG and WebP quality. PNG and GIF have no equivalent knob worth exposing here. */
-    private const QUALITY_N = 90;
+    private const DEFAULT_QUALITY = 90;
 
     public function pairs(): array
     {
@@ -111,7 +111,7 @@ final class GdImageConverter implements Converter
             throw new ConversionException("GD could not decode this as an image (claimed .{$from_extension_c}).");
         }
 
-        $image = self::resize($decoded, $options->width_n(), $options->height_n());
+        $image = self::resize($decoded, $options->width_n(static::class), $options->height_n(static::class));
 
         if ($image !== $decoded) {
             imagedestroy($decoded);
@@ -135,8 +135,8 @@ final class GdImageConverter implements Converter
     /** @param \GdImage $image */
     private function encode($image, string $to_extension_c, ConversionOptions $options): string
     {
-        $quality_n     = $options->quality_n(self::QUALITY_N);
-        $lossless_flag = $options->lossless(false);
+        $quality       = $options->quality(self::DEFAULT_QUALITY, static::class);
+        $lossless_flag = $options->lossless(false, static::class);
 
         ob_start();
         $flattened = null;
@@ -148,8 +148,13 @@ final class GdImageConverter implements Converter
                 break;
 
             case 'webp':
+                // imagewebp() refuses a palette image (a GIF, an 8-bit PNG): true colour first, its
+                // transparent index becoming alpha.
+                if (!imageistruecolor($image)) {
+                    imagepalettetotruecolor($image);
+                }
                 imagesavealpha($image, true);
-                $written = imagewebp($image, null, $lossless_flag ? IMG_WEBP_LOSSLESS : $quality_n);
+                $written = imagewebp($image, null, $lossless_flag ? IMG_WEBP_LOSSLESS : $quality);
                 break;
 
             case 'jpg':
@@ -161,7 +166,7 @@ final class GdImageConverter implements Converter
                 }
 
                 $flattened = self::flatten_to_white($image);
-                $written   = imagejpeg($flattened, null, $quality_n);
+                $written   = imagejpeg($flattened, null, $quality);
                 break;
 
             case 'gif':

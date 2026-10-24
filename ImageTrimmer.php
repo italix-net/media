@@ -18,6 +18,7 @@ use Italix\Converters\ConversionException;
 use Italix\Converters\ConversionOptions;
 use Italix\Converters\ConvertedDocument;
 use Italix\Converters\CropGeometry;
+use Italix\Converters\Spans;
 use Italix\Converters\Trimmer;
 
 /**
@@ -37,14 +38,16 @@ use Italix\Converters\Trimmer;
  * anyway, ignored, per Converter/Trimmer's own contract that an
  * unrecognized parameter is not an error.
  *
- * `null` for every crop-geometry option (the ConversionOptions default) is
- * CropGeometry's own identity case — the full, untouched frame — not this
- * driver's promised "adaptive content-detection" default from Trimmer's
- * own docblock. This driver does not implement adaptive trimming; a caller
- * that wants "figure out the real content bounds yourself" gets an
- * unchanged image back, not an error, but also not what the interface's
- * own docblock describes as the meaning of an omitted amount elsewhere —
- * worth calling out explicitly rather than leaving it to be discovered.
+ * **Adaptive** when `$amount` is null and no crop-geometry key is given at
+ * all (WIDTH, HEIGHT, RATIO, CROP_*): what Trimmer's docblock promises for
+ * an omitted amount — the image cut to its real content. The background is
+ * BACKGROUND, or the commonest colour along the border; content is any pixel
+ * farther from it than GAP_TOLERANCE (default 10, of 100), found through
+ * Italix\Converters\Spans, the same profile a grid is detected with. An
+ * image that is nothing but background is an error: there is no content to
+ * cut to. (Up to 2.1.0 this case returned the image unchanged — a documented
+ * gap, now closed.) Any crop key given keeps the CropGeometry path, exactly
+ * as before.
  */
 final class ImageTrimmer implements Trimmer
 {
@@ -77,7 +80,9 @@ final class ImageTrimmer implements Trimmer
         }
 
         try {
-            $box     = CropGeometry::resolve(imagesx($decoded), imagesy($decoded), $options, static::class);
+            $box     = $amount === null && !self::has_crop_keys($options)
+                ? self::content_box($decoded, $options)
+                : CropGeometry::resolve(imagesx($decoded), imagesy($decoded), $options, static::class);
             $cropped = imagecrop($decoded, $box);
 
             if ($cropped === false) {
@@ -99,6 +104,52 @@ final class ImageTrimmer implements Trimmer
     public function describe(): string
     {
         return implode('/', self::FORMATS) . ' -> same format, cropped (ext-gd, geometry via ' . CropGeometry::class . ')';
+    }
+
+    /** Whether any key CropGeometry reads is given — then the crop is declared, not detected. ALIGN_* alone only places a declared cut. */
+    private static function has_crop_keys(ConversionOptions $options): bool
+    {
+        foreach ([
+            ConversionOptions::WIDTH,
+            ConversionOptions::HEIGHT,
+            ConversionOptions::RATIO,
+            ConversionOptions::CROP_LEFT,
+            ConversionOptions::CROP_RIGHT,
+            ConversionOptions::CROP_TOP,
+            ConversionOptions::CROP_BOTTOM,
+        ] as $key_c) {
+            if ($options->has($key_c, static::class)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The box of the image's real content.
+     *
+     * @return array{x: int, y: int, width: int, height: int}
+     * @throws ConversionException an image that is nothing but background
+     */
+    private static function content_box(\GdImage $image, ConversionOptions $options): array
+    {
+        imagepalettetotruecolor($image);   // a palette image (GIF, PNG-8) answers imagecolorat() with indices, not colours
+        $whole    = ['x' => 0, 'y' => 0, 'width' => imagesx($image), 'height' => imagesy($image)];
+        $profiles = GdImages::profiles(
+            $image,
+            $whole,
+            GdImages::background($image, $whole, $options, static::class),
+            $options->gap_tolerance_perc(10, static::class)
+        );
+        $rows    = Spans::content($profiles['rows']);
+        $columns = Spans::content($profiles['columns']);
+
+        if ($rows === null || $columns === null) {
+            throw new ConversionException('Nothing but background: there is no content to trim to.');
+        }
+
+        return ['x' => $columns[0], 'y' => $rows[0], 'width' => $columns[1] - $columns[0] + 1, 'height' => $rows[1] - $rows[0] + 1];
     }
 
     /** @param \GdImage $image */

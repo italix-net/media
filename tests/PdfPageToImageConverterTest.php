@@ -191,4 +191,12 @@ test(
     $out_of_range_threw
 );
 
+// -----------------------------------------------------------------------------
+section('driver-scoped PAGE: set for this driver it is read, set for another it is not');
+
+$scoped_page2 = $driver->convert($two_page_pdf, 'pdf', 'png', ConversionOptions::none()->with_page(2, PdfPageToImageConverter::class));
+test('PAGE=2 scoped to PdfPageToImageConverter renders page 2', $scoped_page2->bytes() === $page2->bytes());
+$other_page2 = $driver->convert($two_page_pdf, 'pdf', 'png', ConversionOptions::none()->with_page(2, 'Some\\OtherDriver'));
+test('PAGE=2 scoped to another driver is not read: page 1', $other_page2->bytes() === $page1->bytes());
+
 exit(summary());

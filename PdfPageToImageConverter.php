@@ -106,7 +106,7 @@ final class PdfPageToImageConverter implements Converter
         string $to_extension_c,
         ConversionOptions $options
     ): ConvertedDocument {
-        $page_n = $options->page_n(1);
+        $page_i = $options->page_i(1, static::class);
 
         $input_path  = tempnam(sys_get_temp_dir(), 'ix-media-pdf-');
         $output_path = tempnam(sys_get_temp_dir(), 'ix-media-png-');
@@ -119,8 +119,8 @@ final class PdfPageToImageConverter implements Converter
                     . ' -dFirstPage=%d -dLastPage=%d -sOutputFile=%s %s 2>&1',
                 self::TIMEOUT_S,
                 self::RESOLUTION_DPI,
-                $page_n,
-                $page_n,
+                $page_i,
+                $page_i,
                 escapeshellarg($output_path),
                 escapeshellarg($input_path)
             );

@@ -3,6 +3,92 @@
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning policy: `VERSIONING.md` at the
 project root.
 
+## [2.3.1] — 2026-09-27
+
+### Changed (development only)
+
+- `require-dev`: `italix/documents` `^0.16` (was `^0.7 || ^0.8`) — the published release the cookbook suites
+  now run and pass against.
+
+### Fixed
+
+**`GdImageConverter` encodes a palette image as WebP.** `imagewebp()` refuses a palette image — every
+GIF, and any 8-bit PNG — and the driver threw "GD failed to encode as .webp". It now converts to true
+colour first, a transparent index becoming alpha. Found importing saved web pages into
+`italix/documents` (0.13.0's `SingleFileImporter`), where such images were kept rather than
+re-encoded. `tests/GdImageConverterTest.php` (+3): a palette PNG, the same with a transparent colour
+(lossless, exact), a GIF; all three fail against 2.3.0.
+
+**`ImageGridMerger` writes a GIF's flat colours exactly.** `imagegif()` quantizes a truecolour canvas
+by itself, and libgd 2.3.3 drifts a flat colour by a few units: the white gutter came out 252,254,252
+and `ImageGridMergerTest`'s "GIF by default: the gutter is white" failed on that host. `GdImages::encode()`
+now quantizes explicitly and `imagecolormatch()` resets each palette entry to the average of the pixels
+it stands for. `GdImageConverter`'s own GIF path is unchanged.
+
+## [2.3.0] — 2026-09-26
+
+### Changed
+
+Reads `ConversionOptions` by the names `italix/converters` 0.7.0 gives them — `quality()`,
+`page_i()`, `align_x_perc()`, `align_y_perc()`, `gap_tolerance_perc()` — and names its own values the
+same way (`$page_i`, `$align_x_perc`, `$tolerance_perc`). No behaviour changes. Requires
+`italix/converters` `^0.7`.
+
+
+
+### Fixed
+
+**`GdImageConverter` and `PdfPageToImageConverter` read driver-scoped values.** Both read their
+options unscoped (`quality_n(self::QUALITY_N)`, `page_n(1)`), so a value set for them alone —
+`with_quality(10, GdImageConverter::class)`, the very example `italix/converters` 0.4.0 gives for
+scoping — was never seen, and the driver silently used its default. Every read now names the driver
+(`static::class`), as the three drivers of 2.2.0 already did: a value scoped to this driver wins over
+the unscoped one, a value scoped to another driver stays invisible. Found writing the README's
+Cookbook. `tests/GdImageConverterTest.php` (+5) and `tests/PdfPageToImageConverterTest.php` (+2)
+cover WIDTH, QUALITY, LOSSLESS and PAGE scoped both ways; all five new checks fail against 2.2.0.
+
+## [2.2.0] — 2026-09-26
+
+### Added
+
+**`ImageExtractor`** (`Italix\Converters\Extractor`) — regions taken out of an image, via `ext-gd`:
+one rectangle (one explicit boundary), several (`[x, y, width, height]` each, after any crop keys), a
+declared grid (`GridGeometry::cells()`), or a detected one (`GRID_COLUMNS`/`GRID_ROWS` = `'auto'`):
+runs of background at least `GAP_MIN` long (default 3px), rows first and then the columns in each
+row, so an irregular page of panels comes apart too. `GRID_SKIP_EMPTY`, `GRID_EXPECT`, and a locator
+on every piece. The background is `BACKGROUND`, or the commonest colour along the border — refused
+when no colour holds half of it. Measured 2026-09-26 at nice 15: detection 3.0s on a 2000x2000
+sheet, 8.4s on 4000x3000; a declared grid 0.3s and 0.8s.
+
+**`ImageGridMerger`** (`Italix\Converters\Merger`) — images put together on one sheet,
+`GridGeometry::canvas()`: never scales (a piece larger than its pixel track is an error), `ALIGN_X/Y`
+(0-100, refused outside) inside a cell, `BACKGROUND` elsewhere — transparent by default, white for
+JPEG and GIF. Pixels copied, not blended. With the options that took a sheet apart and its
+`BACKGROUND`, the same sheet back, pixel for pixel on PNG and on lossless WebP.
+
+`GdImages` — what the three drivers share on top of `ext-gd`; `@internal`.
+
+### Changed
+
+**`ImageTrimmer` is adaptive** when `$amount` is null and no crop key is given: the image cut to its
+real content, through `Italix\Converters\Spans` — what `Trimmer`'s docblock promised for that case.
+Up to 2.1.0 the same call returned the image unchanged, a gap documented on the class; a caller that
+relied on it gets the content box now, and an image that is nothing but background throws. Any crop
+key keeps the declared path exactly as before. The one existing test that called it with no options
+(to check the format is kept) now passes `CROP_LEFT = 0`, the declared identity it meant.
+
+Requires `italix/converters` `^0.6`.
+
+### Verification
+
+`tests/ImageExtractorTest.php` (44), `tests/ImageGridMergerTest.php` (25), `tests/ImageTrimmerTest.php`
+(25, from 13) — real `ext-gd` calls on sheets painted with GD itself, every cell its own colour at
+boxes computed by hand. An adversarial review (mutation testing, fuzzing, edge cases) found five
+bugs before release — palette images read as indices by the adaptive trim, WebP never lossless,
+unguarded canvas allocation, huge track counts exhausting memory, `ALIGN` outside 0-100 losing
+pieces — and gaps in what the tests pinned; each fixed, and each pinned by a test proven to fail
+without its fix.
+
 ## [2.1.0] — 2026-09-03
 
 ### Added

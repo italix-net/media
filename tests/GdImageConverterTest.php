@@ -195,7 +195,7 @@ test(
 );
 
 // -----------------------------------------------------------------------------
-section('QUALITY: a caller-supplied value overrides the QUALITY_N default');
+section('QUALITY: a caller-supplied value overrides DEFAULT_QUALITY');
 
 /** A busy, non-flat pattern — a flat color compresses so well that quality barely changes its size. */
 $busy_png = (static function (): string {
@@ -272,5 +272,73 @@ test('both dimensions together is an exact fit, not aspect-preserving', imagesx(
 $unresized = $driver->convert($wide_png, 'png', 'png', ConversionOptions::none());
 $decoded_u = imagecreatefromstring($unresized->bytes());
 test('no width/height at all leaves the original size untouched', imagesx($decoded_u) === 200 && imagesy($decoded_u) === 100);
+
+// -----------------------------------------------------------------------------
+section('driver-scoped values: a value set for this driver reaches it, one set for another does not');
+
+$scoped_w = imagecreatefromstring($driver->convert($wide_png, 'png', 'png', ConversionOptions::none()->with_width(100, GdImageConverter::class))->bytes());
+test('WIDTH scoped to GdImageConverter is read: 200x100 -> 100x50', [imagesx($scoped_w), imagesy($scoped_w)] === [100, 50]);
+$elsewhere = imagecreatefromstring($driver->convert($wide_png, 'png', 'png', ConversionOptions::none()->with_width(100, 'Some\\OtherDriver'))->bytes());
+test('WIDTH scoped to another driver is not: the size is untouched', [imagesx($elsewhere), imagesy($elsewhere)] === [200, 100]);
+$over = imagecreatefromstring($driver->convert($wide_png, 'png', 'png', ConversionOptions::none()->with_width(50)->with_width(100, GdImageConverter::class))->bytes());
+test('a scoped value wins over the unscoped one, for this driver', imagesx($over) === 100);
+
+$noise_im = imagecreatetruecolor(200, 200);
+mt_srand(11);
+for ($y = 0; $y < 200; $y++) {
+    for ($x = 0; $x < 200; $x++) {
+        imagesetpixel($noise_im, $x, $y, mt_rand(0, 0xFFFFFF));
+    }
+}
+ob_start();
+imagepng($noise_im);
+imagedestroy($noise_im);
+$noise_png = ob_get_clean();
+$scoped_q  = $driver->convert($noise_png, 'png', 'jpg', ConversionOptions::none()->with_quality(10, GdImageConverter::class));
+$default_q = $driver->convert($noise_png, 'png', 'jpg', ConversionOptions::none());
+test('QUALITY scoped to GdImageConverter is read: quality 10 is far smaller than the default 90', strlen($scoped_q->bytes()) * 3 < strlen($default_q->bytes()));
+
+$scoped_lossless_threw = false;
+try {
+    $driver->convert($wide_png, 'png', 'jpg', ConversionOptions::none()->with_lossless(true, GdImageConverter::class));
+} catch (UnsupportedOptionException $e) {
+    $scoped_lossless_threw = true;
+}
+test('LOSSLESS scoped to GdImageConverter is read too: a JPEG refuses it', $scoped_lossless_threw);
+
+// -----------------------------------------------------------------------------
+section('palette images to WebP — imagewebp() refuses a palette, so the driver converts to true colour first');
+
+$palette = static function (string $format, bool $transparent): string {
+    $im   = imagecreate(8, 8);
+    $red  = imagecolorallocate($im, 255, 0, 0);
+    $blue = imagecolorallocate($im, 0, 0, 255);
+    imagefilledrectangle($im, 0, 0, 3, 7, $red);
+    imagefilledrectangle($im, 4, 0, 7, 7, $blue);
+    if ($transparent) {
+        imagecolortransparent($im, $blue);
+    }
+    ob_start();
+    $format === 'gif' ? imagegif($im) : imagepng($im);
+    imagedestroy($im);
+
+    return (string) ob_get_clean();
+};
+$webp_pixel = static function (string $webp, int $x): array {
+    $im = imagecreatefromstring($webp);
+    $c  = imagecolorsforindex($im, imagecolorat($im, $x, 0));
+    imagedestroy($im);
+
+    return [$c['red'], $c['green'], $c['blue'], $c['alpha']];
+};
+// Lossy WebP rounds a colour by a point or two: close, channel by channel.
+$close = static fn (array $a, array $b): bool => max(array_map(static fn (int $x, int $y): int => abs($x - $y), $a, $b)) <= 4;
+
+$from_palette_png = $driver->convert($palette('png', false), 'png', 'webp', ConversionOptions::none());
+test('a palette PNG becomes a WebP, its colours kept', str_starts_with($from_palette_png->bytes(), 'RIFF') && $close($webp_pixel($from_palette_png->bytes(), 1), [255, 0, 0, 0]));
+$from_transparent = $driver->convert($palette('png', true), 'png', 'webp', ConversionOptions::none()->with_lossless(true));
+test("...its transparent colour stays transparent (lossless)", $webp_pixel($from_transparent->bytes(), 6)[3] === 127 && $webp_pixel($from_transparent->bytes(), 1) === [255, 0, 0, 0]);
+$from_gif = $driver->convert($palette('gif', false), 'gif', 'webp', ConversionOptions::none());
+test('a GIF — always a palette — becomes a WebP too', str_starts_with($from_gif->bytes(), 'RIFF') && $close($webp_pixel($from_gif->bytes(), 6), [0, 0, 255, 0]));
 
 exit(summary());
