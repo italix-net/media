@@ -1,6 +1,6 @@
 {
     "name": "italix/media",
-    "description": "Image, audio and video format-conversion drivers for italix/converters.",
+    "description": "Media conversion drivers for italix/converters — images today, on GD: resize and re-encode, PDF pages to images, trimming to content, cutting a sheet into its cells and merging cells into one; audio and video planned",
     "type": "library",
     "license": "MPL-2.0",
     "version": "2.3.1",
